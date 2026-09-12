@@ -1,5 +1,6 @@
-using GameInterface.Services.Tournaments;
+﻿using GameInterface.Services.Tournaments;
 using GameInterface.Services.Tournaments.Data;
+using GameInterface.Services.Tournaments.Handlers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +12,36 @@ namespace GameInterface.Tests.Services.Tournaments;
 
 public class TournamentSessionRegistryTests
 {
+    [Fact]
+    public void HitProgressionRevision_AcceptsHitStampedBeforeSpectatorEntry()
+    {
+        var registry = new TournamentSessionRegistry();
+        TournamentSessionSnapshot snapshot = CreateLiveSession(registry);
+        long hitRevision = snapshot.Revision;
+
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryRequestSpectate(
+            snapshot.SessionId,
+            snapshot.Revision,
+            "late-spectator",
+            out snapshot));
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryEnterMission(
+            snapshot.SessionId,
+            snapshot.Revision,
+            "late-spectator",
+            out snapshot));
+
+        Assert.True(snapshot.Revision > hitRevision);
+        Assert.True(TournamentSessionHandler.IsAcceptedProgressionRevision(
+            snapshot.Revision,
+            hitRevision));
+        Assert.False(TournamentSessionHandler.IsAcceptedProgressionRevision(
+            snapshot.Revision,
+            snapshot.Revision + 1));
+        Assert.False(TournamentSessionHandler.IsAcceptedProgressionRevision(
+            snapshot.Revision,
+            -1));
+    }
+
     [Fact]
     public void Join_ReplacesLowestPriorityNonLordBeforeLord()
     {
@@ -340,6 +371,73 @@ public class TournamentSessionRegistryTests
         Assert.Equal("basic-troop", replacement.CharacterId);
         Assert.Null(replacement.ControllerId);
         Assert.False(replacement.IsHuman);
+    }
+
+    [Fact]
+    public void ActiveLeave_AfterTwoHostMigrations_PersistsCanonicalManifestAuthorityRevision()
+    {
+        var registry = new TournamentSessionRegistry();
+        TournamentSessionSnapshot snapshot = CreateStartedSession(registry, humanInMatch: true);
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryRequestSpectate(
+            snapshot.SessionId,
+            snapshot.Revision,
+            "player-3",
+            out snapshot));
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryEnterMission(
+            snapshot.SessionId, snapshot.Revision, "player-1", out snapshot));
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryEnterMission(
+            snapshot.SessionId, snapshot.Revision, "player-2", out snapshot));
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryEnterMission(
+            snapshot.SessionId, snapshot.Revision, "player-3", out snapshot));
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryChoose(
+            snapshot.SessionId, snapshot.Revision, snapshot.CurrentMatchId, "player-1",
+            TournamentPlayerChoice.Join, out snapshot, out _));
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryChoose(
+            snapshot.SessionId, snapshot.Revision, snapshot.CurrentMatchId, "player-2",
+            TournamentPlayerChoice.Watch, out snapshot, out _));
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryChoose(
+            snapshot.SessionId, snapshot.Revision, snapshot.CurrentMatchId, "player-3",
+            TournamentPlayerChoice.Watch, out snapshot, out _));
+        Assert.Equal(TournamentSessionPhase.LiveMatch, snapshot.Phase);
+
+        TournamentSpawnManifestData original = CreateManifest(
+            snapshot,
+            snapshot.Revision,
+            snapshot.BracketRevision);
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryStoreSpawnManifest(
+            original,
+            "player-1",
+            out _));
+
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryLeaveActive(
+            snapshot.SessionId,
+            snapshot.Revision,
+            "player-1",
+            900,
+            "Tournament Recruit",
+            out snapshot,
+            out _,
+            out _));
+        Assert.Equal("player-2", snapshot.HostControllerId);
+        Assert.True(registry.TryGetSpawnManifest(snapshot.SessionId, out var firstMigration));
+        Assert.Equal(snapshot.Revision, firstMigration.Revision);
+        Assert.All(firstMigration.Agents, data => Assert.Equal("player-2", data.ControllerId));
+        Assert.All(firstMigration.Agents, data => Assert.Equal(1, data.AuthorityRevision));
+
+        Assert.Equal(TournamentMutationStatus.Applied, registry.TryLeaveActive(
+            snapshot.SessionId,
+            snapshot.Revision,
+            "player-2",
+            901,
+            "Tournament Recruit",
+            out snapshot,
+            out _,
+            out _));
+        Assert.Equal("player-3", snapshot.HostControllerId);
+        Assert.True(registry.TryGetSpawnManifest(snapshot.SessionId, out var rejoinManifest));
+        Assert.Equal(snapshot.Revision, rejoinManifest.Revision);
+        Assert.All(rejoinManifest.Agents, data => Assert.Equal("player-3", data.ControllerId));
+        Assert.All(rejoinManifest.Agents, data => Assert.Equal(2, data.AuthorityRevision));
     }
 
     [Fact]

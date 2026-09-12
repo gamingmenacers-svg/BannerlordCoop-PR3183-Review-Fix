@@ -56,6 +56,7 @@ internal class LoadModConfigHandler : IHandler
         // kills session start (CampaignDifficultyHandler guards the difficulty block the same way).
         ModConfigProvider.LoadModConfig(modConfig.Data.ModOptions ?? new ModOptionsData());
         ApplyConfigs();
+        messageBroker.Publish(this, new ModConfigApplied(ModConfigProvider.ModOptions));
 
         network.SendAll(new NetworkLoadModConfig(ModConfigProvider.ModOptions));
     }
@@ -73,6 +74,7 @@ internal class LoadModConfigHandler : IHandler
         GameThread.RunSafe(() =>
         {
             ModConfigProvider.ModOptions = obj.What.ModOptions;
+            messageBroker.Publish(this, new ModConfigApplied(ModConfigProvider.ModOptions));
         });
     }
 

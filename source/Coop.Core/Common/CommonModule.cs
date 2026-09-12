@@ -1,10 +1,12 @@
 ﻿using Autofac;
 using Common;
+using Common.Logging;
 using Common.Messaging;
 using Common.Network;
 using Common.PacketHandlers;
 using Common.Serialization;
 using Common.Util;
+using Common.Voice;
 using Coop.Core.Common.Configuration;
 using GameInterface.Services.Entity;
 using GameInterface.Services.Modules;
@@ -20,7 +22,14 @@ public abstract class CommonModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
+        builder.RegisterType<ReceivePathDiagnostics>().As<IReceivePathDiagnostics>().InstancePerDependency();
+        builder.RegisterType<VoiceTransitWindow>().As<IVoiceTransitWindow>().InstancePerDependency();
+        builder.RegisterType<VoicePolicy>().As<IVoicePolicy>().InstancePerDependency();
+        builder.RegisterType<VoiceClock>().As<IVoiceClock>().InstancePerDependency();
+        builder.RegisterType<VoiceJitterBuffer>().As<IVoiceJitterBuffer>().InstancePerDependency();
+        builder.RegisterType<VoiceRoutingState>().As<IVoiceRoutingState>().InstancePerDependency();
         builder.RegisterType<TaleWorldsModuleInfoProvider>().As<IModuleInfoProvider>().SingleInstance();
+        builder.RegisterInstance(new CoopLogFile(null)).As<ICoopLogFile>().SingleInstance();
 
         #region Serialization
         builder.RegisterType<SerializableTypeMapper>().As<ISerializableTypeMapper>().InstancePerLifetimeScope();
@@ -29,6 +38,9 @@ public abstract class CommonModule : Module
 
         #region Network
         builder.RegisterType<NetworkConfig>().As<INetworkConfig>().InstancePerLifetimeScope();
+        builder.RegisterGeneric(typeof(ReliableMessageBatcher<>))
+            .As(typeof(IReliableMessageBatcher<>))
+            .InstancePerDependency();
         #endregion
 
         #region Communication

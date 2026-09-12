@@ -3,15 +3,18 @@ using Common.Messaging;
 using Common.Network;
 using Common.Serialization;
 using Common.Tests.Utils;
+using Coop.Core.Server.Connections;
 using Coop.Core.Server.Services.Kingdoms;
 using Coop.Core.Server.Services.MobileParties;
 using Coop.Tests.Mocks;
 using GameInterface.AutoSync;
+using GameInterface.Configuration;
 using GameInterface.CoopSessionData;
 using GameInterface.Registry;
 using GameInterface.Registry.Auto;
 using GameInterface.Services.CampaignService.Interfaces;
 using GameInterface.Services.Chat;
+using GameInterface.Services.Voice;
 using GameInterface.Services.GameState.Interfaces;
 using GameInterface.Services.Heroes.Interaces;
 using GameInterface.Services.Heroes.Interfaces;
@@ -96,6 +99,10 @@ internal abstract class TestComponentBase
 
         RegisterMock<ILogger>(builder);
         RegisterMock<IGameInterface>(builder);
+        var modConfig = new Mock<IModConfig>();
+        modConfig.SetupGet(config => config.Data).Returns(new ModConfigData());
+        builder.RegisterInstance(modConfig).AsSelf().SingleInstance();
+        builder.RegisterInstance(modConfig.Object).As<IModConfig>().SingleInstance();
         RegisterMock<IAutoSyncPatchCollector>(builder);
         RegisterMock<IHeroInterface>(builder);
         RegisterMock<IModuleInfoProvider>(builder);
@@ -123,6 +130,7 @@ internal abstract class TestComponentBase
         RegisterMock<IMapEventInitializationBarrier>(builder);
         RegisterMock<IConnectedPlayerCountService>(builder);
         RegisterMock<IChatService>(builder);
+        RegisterMock<IVoiceClient>(builder);
         RegisterMock<IChatPlayerNameResolver>(builder);
         // BattleHostHandler (MissionModule, auto-activated) needs the registry and the troop ledger,
         // which the real containers get from GameInterfaceModule — not loaded here.
@@ -134,6 +142,7 @@ internal abstract class TestComponentBase
         RegisterMock<ITacticalUnitSymbolsConfigInterface>(builder);
         RegisterMock<IVillageHostileActionInterface>(builder);
         RegisterMock<IServerOptionsProvider>(builder);
+        RegisterMock<ISteamBanList>(builder);
         RegisterMock<ISaveNotificationInterface>(builder);
 
         // ISaveInterface is consumed by TransferSaveState's constructor, which packages a save the
